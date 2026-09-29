@@ -583,6 +583,24 @@ AUTH_JWT_SECRET=your-super-secret-jwt-key  # Required when auth is enabled
 
 Generate a secret: `python scripts/generate_jwt_secret.py`
 
+Tokens can carry a standard integer `exp` claim; Honcho rejects them once it has passed. `POST /v3/keys` with `expires_at` and `scripts/generate_jwt.py --expires` mint tokens this way. A token with no `exp` never expires.
+
+#### Issuer-signed tokens (JWKS)
+
+Honcho can also accept short-lived tokens signed by your own token issuer, verified against the issuer's public JSON Web Key Set (JWKS). This is off by default, and when it is on, shared-secret tokens keep working unchanged.
+
+```bash
+AUTH_JWKS_URL=https://issuer.example.com/.well-known/jwks.json  # Or AUTH_JWKS with the key set inline
+AUTH_JWKS_ISSUER=https://issuer.example.com   # Required `iss`
+AUTH_JWKS_AUDIENCE=https://honcho.example.com # Required `aud`
+AUTH_JWKS_ALGORITHMS='["ES256"]'              # Allowed algorithms (asymmetric only)
+AUTH_JWKS_CACHE_TTL_SECONDS=300               # How long a fetched key set is reused
+```
+
+A token whose header `kid` names a key in the set is verified with that key and must carry the configured `iss` and `aud` and an integer `exp`. Its other claims are the same as a Honcho key's (`w`, `p`, `s`, `ad`), so scoping works identically. Any other token is verified with `AUTH_JWT_SECRET`, and `AUTH_JWT_SECRET` is still required.
+
+A fetched key set is reused until `AUTH_JWKS_CACHE_TTL_SECONDS` pass. If a refetch then fails, issuer-signed tokens are rejected until it succeeds; shared-secret tokens are unaffected. An unknown `kid` does not trigger a refetch, so publish a new signing key at least one TTL before you sign with it.
+
 ### Cache (Redis)
 
 Redis caching is optional. Honcho works without it but benefits from caching in high-traffic scenarios.

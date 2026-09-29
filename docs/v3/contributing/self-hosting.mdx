@@ -364,6 +364,7 @@ The default compose file is already production-oriented — ports bound to `127.
 
 ### Security
 - Set `AUTH_USE_AUTH=true` and generate a JWT secret with `python scripts/generate_jwt_secret.py`
+- Prefer expiring keys (`expires_at` on `POST /v3/keys`), or have your own token issuer sign short-lived tokens and point Honcho at its key set with `AUTH_JWKS_URL` (see [issuer-signed tokens](/v3/contributing/configuration#issuer-signed-tokens-jwks))
 - Use HTTPS via a reverse proxy in front of Honcho. Example with Caddy (automatic TLS):
   ```
   honcho.example.com {

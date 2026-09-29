@@ -40,6 +40,12 @@ CONNECT_TIMEOUT_SECONDS = 2
 [auth]
 USE_AUTH = false
 JWT_SECRET = "your-secret-key-here"  # Must be set if USE_AUTH is true
+# Optional issuer-signed tokens, verified against a JSON Web Key Set
+# JWKS_URL = "https://issuer.example.com/.well-known/jwks.json"  # or JWKS = '<inline JWK Set JSON>'
+# JWKS_ISSUER = "https://issuer.example.com"  # Required when a key set is set
+# JWKS_AUDIENCE = "https://honcho.example.com"  # Required when a key set is set
+# JWKS_ALGORITHMS = ["ES256"]
+# JWKS_CACHE_TTL_SECONDS = 300
 
 # Sentry settings
 [sentry]

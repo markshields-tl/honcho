@@ -1,3 +1,4 @@
+import json
 import logging
 import math
 import os
@@ -6,6 +7,7 @@ from pathlib import Path
 from typing import Annotated, Any, ClassVar, Literal, cast, get_args
 from urllib.parse import urlparse
 
+import jwt
 from dotenv import load_dotenv
 from pydantic import AliasChoices, BaseModel, Field, field_validator, model_validator
 from pydantic.fields import FieldInfo
@@ -753,11 +755,56 @@ class AuthSettings(HonchoSettings):
     USE_AUTH: bool = False
     JWT_SECRET: str | None = None  # Must be set if USE_AUTH is true
 
+    # Optional issuer-signed tokens, verified against a JSON Web Key Set. A
+    # token whose header `kid` names a key in the set is verified with that
+    # key; every other token takes the JWT_SECRET (HS256) path unchanged.
+    JWKS_URL: str | None = None  # Fetched and cached for JWKS_CACHE_TTL_SECONDS
+    JWKS: str | None = None  # Inline JWK Set JSON, instead of JWKS_URL
+    JWKS_ISSUER: str | None = None  # Required `iss` (must be set with a key set)
+    JWKS_AUDIENCE: str | None = None  # Required `aud` (must be set with a key set)
+    JWKS_ALGORITHMS: list[str] = ["ES256"]
+    JWKS_CACHE_TTL_SECONDS: Annotated[int, Field(default=300, ge=1, le=86_400)] = 300
+
     @model_validator(mode="after")  # type: ignore
     def _require_jwt_secret(self) -> "AuthSettings":
         if self.USE_AUTH and not self.JWT_SECRET:
             raise ValueError("JWT_SECRET must be set if USE_AUTH is true")
         return self
+
+    @model_validator(mode="after")  # type: ignore
+    def _validate_jwks(self) -> "AuthSettings":
+        if not self.jwks_enabled:
+            return self
+        if self.JWKS_URL and self.JWKS:
+            raise ValueError("Set at most one of JWKS_URL and JWKS")
+        if not self.JWKS_ISSUER or not self.JWKS_AUDIENCE:
+            raise ValueError(
+                "JWKS_ISSUER and JWKS_AUDIENCE must be set when a key set is configured"
+            )
+        if self.JWKS:
+            # Fail at startup, not on the first request, for a malformed key set.
+            try:
+                document = json.loads(self.JWKS)
+                if not isinstance(document, dict):
+                    raise ValueError("not a JSON object")
+                jwt.PyJWKSet.from_dict(cast(dict[str, Any], document))
+            except (ValueError, jwt.PyJWTError) as exc:
+                raise ValueError(f"JWKS is not a valid JWK Set: {exc}") from None
+        if not self.JWKS_ALGORITHMS:
+            raise ValueError("JWKS_ALGORITHMS must not be empty")
+        # Only asymmetric algorithms: a symmetric or unsigned one would let a
+        # public key set double as a signing secret.
+        for algorithm in self.JWKS_ALGORITHMS:
+            if algorithm.upper() == "NONE" or algorithm.upper().startswith("HS"):
+                raise ValueError(
+                    f"JWKS_ALGORITHMS must be asymmetric; {algorithm} is not allowed"
+                )
+        return self
+
+    @property
+    def jwks_enabled(self) -> bool:
+        """True when issuer-signed tokens are configured (JWKS_URL or JWKS)."""
+        return bool(self.JWKS_URL or self.JWKS)
 
 
 class SentrySettings(HonchoSettings):
